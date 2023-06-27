@@ -1,113 +1,93 @@
-
-use std::convert::TryFrom;
-use std::fmt;
-use std::str::FromStr;
-
 use crate::{Error, Result};
 
-/// A validated PNG chunk type. See the PNG spec for more details.
-/// http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct ChunkType {
     bytes: [u8; 4],
 }
 
 impl ChunkType {
-    /// Returns the raw bytes contained in this chunk
-    pub fn bytes(&self) -> [u8; 4] {
+    fn bytes(&self) -> [u8; 4] {
         self.bytes
     }
-
-    /// Returns the property state of the first byte as described in the PNG spec
-    pub fn is_critical(&self) -> bool {
-        (self.bytes[0] & (1 << 5)) == 0
-    }
-
-    /// Returns the property state of the second byte as described in the PNG spec
-    pub fn is_public(&self) -> bool {
-        (self.bytes[1] & (1 << 5)) == 0
-    }
-
-    /// Returns the property state of the third byte as described in the PNG spec
-    pub fn is_reserved_bit_valid(&self) -> bool {
-        (self.bytes[2] & (1 << 5)) == 0
-    }
-
-    /// Returns the property state of the fourth byte as described in the PNG spec
-    pub fn is_safe_to_copy(&self) -> bool {
-        !((self.bytes[3] & (1 << 5)) == 0)
-    }
-
-    /// Returns true if the reserved byte is valid and all four bytes are represented by the characters A-Z or a-z.
-    /// Note that this chunk type should always be valid as it is validated during construction.
-    pub fn is_valid(&self) -> bool {
+    fn is_valid(&self) -> bool {
         self.is_reserved_bit_valid()
     }
-
-    /// Valid bytes are represented by the characters A-Z or a-z
-    pub fn is_valid_byte(byte: u8) -> bool {
+    fn is_critical(&self) -> bool {
+        (self.bytes[0] & (1 << 5)) == 0
+    }
+    fn is_public(&self) -> bool {
+        (self.bytes[1] & (1 << 5)) == 0
+    }
+    fn is_reserved_bit_valid(&self) -> bool {
+        (self.bytes[2] & (1 << 5)) == 0
+    }
+    fn is_safe_to_copy(&self) -> bool {
+        !((self.bytes[3] & (1 << 5)) == 0)
+    }
+    fn byte_in_range(byte: u8) -> bool {
         (65 <= byte && byte <= 90) || (97 <= byte && byte <= 122)
     }
 }
 
 #[derive(Debug)]
-pub enum ChunkTypeDecodingError {
+pub enum ChunkTypeReadingError {
     InvalidByte(u8),
 
     InvalidLength(usize),
 }
 
-impl fmt::Display for ChunkTypeDecodingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for ChunkTypeReadingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidByte(byte) => write!(f, "Bad byte: {byte} ({byte:b})", byte = byte),
-            Self::InvalidLength(len) => write!(f, "Bad length: {} (expected 4)", len),
+            Self::InvalidByte(byte) => write!(f, "Bad Byte Read {}", byte),
+            Self::InvalidLength(size) => write!(f, "Bad size {}, expected 4", size)
         }
     }
 }
 
-impl std::error::Error for ChunkTypeDecodingError {}
+impl std::error::Error for ChunkTypeReadingError {}
 
-impl TryFrom<[u8; 4]> for ChunkType {
+impl std::convert::TryFrom<[u8; 4]> for ChunkType {
     type Error = Error;
 
     fn try_from(bytes: [u8; 4]) -> Result<Self> {
         for byte in bytes.iter() {
-            if !Self::is_valid_byte(*byte) {
-                return Err(Box::new(ChunkTypeDecodingError::InvalidByte(*byte)));
+            if !Self::byte_in_range(*byte) {
+                return Err(Box::new(ChunkTypeReadingError::InvalidByte(*byte)));
             }
         }
         Ok(ChunkType { bytes })
     }
+
 }
 
-impl fmt::Display for ChunkType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.bytes {
-            write!(f, "{}", char::from(*byte))?;
-        }
-        Ok(())
-    }
-}
-
-impl FromStr for ChunkType {
+impl std::str::FromStr for ChunkType {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
         if s.len() != 4 {
-            return Err(Box::new(ChunkTypeDecodingError::InvalidLength(s.len())));
+            return Err(Box::new(ChunkTypeReadingError::InvalidLength(s.len())));
         }
 
         let mut vec: [u8; 4] = [0; 4];
 
         for (index, byte) in s.as_bytes().iter().enumerate() {
-            if Self::is_valid_byte(*byte) {
-                vec[index] = *byte
+            if Self::byte_in_range(*byte) {
+                vec[index] = *byte;
             } else {
-                return Err(Box::new(ChunkTypeDecodingError::InvalidByte(*byte)));
+                return Err(Box::new(ChunkTypeReadingError::InvalidByte(*byte)));
             }
         }
-        Ok(ChunkType { bytes: vec })
+        Ok(ChunkType { bytes:vec })
+    }
+}
+
+impl std::fmt::Display for ChunkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for byte in &self.bytes() {
+            write!(f, "{}", char::from(*byte))?;
+        }
+        Ok(())
     }
 }
 
